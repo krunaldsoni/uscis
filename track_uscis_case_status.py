@@ -41,13 +41,17 @@ def requestStatus(caseID):
 def open_db():
     dataBase = {}
     visited = {}
+    mydata = {}
     if os.path.isfile('data.txt'):
       with open('data.txt') as infile:
         dataBase = json.load(infile)
     if os.path.isfile('visited.txt'):
       with open('visited.txt') as infile:
         visited = json.load(infile)
-    return dataBase, visited
+    if os.path.isfile('mydata.txt'):
+      with open('mydata.txt') as infile:
+        mydata = json.load(infile)
+    return dataBase, visited, mydata
 
 def store_db(dataBase, visited):
     # store data
@@ -63,6 +67,7 @@ def store_db(dataBase, visited):
 def query_uscis_and_find_type_of_form(caseID):
     soup = requestStatus(caseID)
     formtype = ""
+    status = ""
     for status in soup.findAll('div', {'class': 'rows text-center'}):
         if 'Form I-485' in status.text:
             formtype = "Form I-485"
@@ -72,46 +77,53 @@ def query_uscis_and_find_type_of_form(caseID):
             formtype = "Form I-131"
         elif 'Form I-140' in status.text:
             formtype = "Form I-140"
-    print(formtype)
+
+    print("=====Your Case Status=====")
+    print("Your case-id: %s    Form-Type: %s\n" % (caseID, formtype))
+    print(status.text);
+    print("==============================")
     return formtype
 
 #*************************************************************************
 #  This Iterate through neighbors and match the given form-type and it'll
 #  stop once we reached number provided to set how many neighbors to visit
 #*************************************************************************
-def query_uscis_based_on_form_type(dataBase, visited, caseID, formType, numRange):
+def query_uscis_based_on_form_type(dataBase, visited, mydata, caseID, formType, numRange):
     myCaseNum = int(re.sub("[^0-9]", "", caseID))
     myCenter = re.sub(r'[0-9]', "", caseID)
     # query USCIS check my case webpage
     for n in range (0-numRange, numRange):
-      caseNum = str(myCaseNum + n)
-      if caseNum not in visited:
-        #soup = requestStatusUsingBrowserMethod('LIN' + caseNum)
-        soup = requestStatus(myCenter + caseNum)
-        # get current case status
-        for status in soup.findAll('div', {'class': 'rows text-center'}):
-          if all (keyWord in status.text for keyWord in [formType]):
-            print(status.text)
-            visited[caseNum] = 'visited'
-            receiptNum = re.search('%s(\d+)'%myCenter, status.text).group(1)
-            if 'Fingerprint Fee Was Received' in status.text:
-              dataBase[receiptNum] = 'Fingerprint Fee Was Received'
-            elif 'Case Was Approved' in status.text:
-              dataBase[receiptNum] = 'Case Was Approved'
-            elif any (deny in status.text for deny in ['Case Was Rejected', 'Decision Notice Mailed']):
-              dataBase[receiptNum] = 'Case Rejected'
-            elif 'Case Was Received' in status.text:
-              dataBase[receiptNum] = 'Case Received'
-            elif 'Case Is Ready To Be Scheduled For An Interview' in status.text:
-              dataBase[receiptNum] = 'Ready for Interview'
-            elif any (RFE in status.text for RFE in ['Request for Additional Evidence Was Mailed', 'Request For Evidence Was Received']):
-              dataBase[receiptNum] = 'RFE'
-            elif 'Case Was Transferred' in status.text:
-              dataBase[receiptNum] = 'Case Transferred'
-            elif 'Name Was Updated' in status.text:
-              dataBase[receiptNum] = 'Name Updated'
-            elif 'Fingerprints Were Taken' in status.text:
-                dataBase[receiptNum] = 'Fingerprints Taken'
+        caseNum = str(myCaseNum + n)
+        if caseNum not in visited:
+            #soup = requestStatusUsingBrowserMethod('LIN' + caseNum)
+            soup = requestStatus(myCenter + caseNum)
+            # get current case status
+            for status in soup.findAll('div', {'class': 'rows text-center'}):
+                if all (keyWord in status.text for keyWord in [formType]):
+                    #print(status.text)
+                    visited[caseNum] = 'visited'
+                    receiptNum = re.search('%s(\d+)'%myCenter, status.text).group(1)
+                    if 'Fingerprint Fee Was Received' in status.text:
+                      dataBase[receiptNum] = 'Fingerprint Fee Was Received'
+                    elif 'Case Was Approved' in status.text:
+                      dataBase[receiptNum] = 'Case Was Approved'
+                    elif any (deny in status.text for deny in ['Case Was Rejected', 'Decision Notice Mailed']):
+                      dataBase[receiptNum] = 'Case Rejected'
+                    elif 'Case Was Received' in status.text:
+                      dataBase[receiptNum] = 'Case Received'
+                    elif 'Case Is Ready To Be Scheduled For An Interview' in status.text:
+                      dataBase[receiptNum] = 'Ready for Interview'
+                    elif any (RFE in status.text for RFE in ['Request for Additional Evidence Was Mailed', 'Request For Evidence Was Received']):
+                      dataBase[receiptNum] = 'RFE'
+                    elif 'Case Was Transferred' in status.text:
+                      dataBase[receiptNum] = 'Case Transferred'
+                    elif 'Name Was Updated' in status.text:
+                      dataBase[receiptNum] = 'Name Updated'
+                    elif 'Fingerprints Were Taken' in status.text:
+                      dataBase[receiptNum] = 'Fingerprints Taken'
+        if caseNum in dataBase.keys():
+            mydata[caseNum] = dataBase[caseNum]
+            
 
 def count_entries_from_db(dataBase):
     numTotalCase = 0
@@ -147,10 +159,9 @@ def count_entries_from_db(dataBase):
         FingerPrintTaken += 1
     return numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken
 
-def print_database_entries(template, caseID, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken):
-    print('*********************************')
+def print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken):
     print('For ' + str(2*numRange) + ' neighbors of ' + caseID +', we found the following statistics: ')
-    print(template.format('total number of I-485 application received: ', str(numTotalCase)))
+    print(template.format('total number of %s  application received: ' % formType, str(numTotalCase)))
     print(template.format('Case Was Approved: ', str(numApproved)))
     print(template.format('Fingerprint taken: ', str(FingerPrintTaken)))
     print(template.format('Fingerprint Fee Was Received: ', str(numFPReceived)))
@@ -173,10 +184,10 @@ if __name__ == "__main__":
     dataBase = {}
     visited = {}
     #main work
-    dataBase, visited = open_db()
+    dataBase, visited, mydata = open_db()
     formType = query_uscis_and_find_type_of_form(caseID)
-    query_uscis_based_on_form_type(dataBase, visited, caseID, formType, numRange)
+    query_uscis_based_on_form_type(dataBase, visited, mydata, caseID, formType, numRange)
     store_db(dataBase, visited)
-    numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken = count_entries_from_db(dataBase)
+    numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken = count_entries_from_db(mydata)
     template = '{0:45}{1:5}'
-    print_database_entries(template, caseID, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken)
+    print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken)
