@@ -7,16 +7,16 @@
     * It is crazy to find that USCIS was approving 2 applications per day from my range.
 ## Did I write from scratch
   * No but good amount of chunk is re-written, basically I combined multiple good uscis scripts on githubs and formated such a way that it is scalable in future
-# Usage
-## usage to get individual case status:
-###             track_uscis_case_status.py --case <case_number>
-## usage to get individual case and its neighbors with same case type:
-###             track_uscis_case_status.py --case <case_number> --check  <howmany_neighbors to check>
-## usage to get report of all forms type in this range:
-###             track_uscis_case_status.py --range  <start_number> <end_number>
+## Usage
+  * usage to get individual case status:
+             track_uscis_case_status.py --case <case_number>
+  * usage to get individual case and its neighbors with same case type:
+              track_uscis_case_status.py --case <case_number> --check  <howmany_neighbors to check>
+  * usage to get report of all forms type in this range:
+             track_uscis_case_status.py --range  <start_number> <end_number>
 ### example
 
-***py tracker_uscis.py LIN2190061752 -n 5***
+***py tracker_uscis.py --case LIN2190061752 --check 5***
 
 Checks 5 neighbors before target number and 5 neighbors after
 ```
