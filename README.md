@@ -8,11 +8,12 @@
 ## Did I write from scratch
   * No but good amount of chunk is re-written, basically I combined multiple good uscis scripts on githubs and formated such a way that it is scalable in future
 # Usage
-## To find 10 neighbor before and 10 neighbor after the case id
- * _track_uscis_case_status.py  <USCIS_case_number>_
-   * Note: It will count neighbors only when matching case type (I-140, I-765, I-131, I-485) is found
-## To find given number of neighbors around case id
- * _track_uscis_case_status.py  <USCIS_case_number> -n 10_
+## usage to get individual case status:
+###             track_uscis_case_status.py --case <case_number>
+## usage to get individual case and its neighbors with same case type:
+###             track_uscis_case_status.py --case <case_number> --check  <howmany_neighbors to check>
+## usage to get report of all forms type in this range:
+###             track_uscis_case_status.py --range  <start_number> <end_number>
 ### example
 
 ***py tracker_uscis.py LIN2190061752 -n 5***
