@@ -9,11 +9,11 @@
   * No but good amount of chunk is re-written, basically I combined multiple good uscis scripts on githubs and formated such a way that it is scalable in future
 ## Usage
   * usage to get individual case status:
-             track_uscis_case_status.py --case <case_number>
+  ***track_uscis_case_status.py --case <case_number>***
   * usage to get individual case and its neighbors with same case type:
-              track_uscis_case_status.py --case <case_number> --check  <howmany_neighbors to check>
+  ***track_uscis_case_status.py --case <case_number> --check  <howmany_neighbors to check>***
   * usage to get report of all forms type in this range:
-             track_uscis_case_status.py --range  <start_number> <end_number>
+  ***track_uscis_case_status.py --range  <start_number> <end_number>***
 ### example
 
 ***py tracker_uscis.py --case LIN2190061752 --check 5***
@@ -39,4 +39,9 @@ Case Was Ready for Interview:                0
 Case is RFE:                                 0
 Case Was Transferred:                        0
 Name Was Updated:                            0
+```
+
+***py tracker_uscis.py --range LIN2190061752 LIN2190061758***
+```
+Checks the entire range and publish html file containing data in table format.
 ```
