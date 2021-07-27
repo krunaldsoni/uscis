@@ -20,6 +20,8 @@ import time
 import os, ssl
 import warnings
 import datetime
+import threading
+import concurrent.futures
 
 FORM_485 = "Form I-485"
 database_485 = {}
@@ -32,11 +34,17 @@ database_140 = {}
 database = {}
 DATA = "data.json"
 SUMMARY = "summary.json"
+# for thread pool
+threads = []
+# be very careful increasin threads, as these many parallel USCIS requests are generated
+MAX_THREADS = 1000
 
 FINGER_PRINT_FEE_RX       = 'Fingerprint Fee Was Received'
 CASE_APPROVED             = 'Case Was Approved'
 CASE_REJECTED             = 'Case Rejected'
 CASE_RECEIVED             = 'Case Received'
+CARD_MAILED               = 'Card Was Mailed'
+CARD_PRODUCED             = 'Card Is Being Produced'
 INTERVIEW_READY           = 'Ready for Interview'
 CASE_RFE                  = 'RFE'
 CASE_TRANSFERRED          = 'Case Transferred'
@@ -97,6 +105,10 @@ def find_case_status(status):
       case_status = NAME_UPDATED
     elif 'Fingerprints Were Taken' in status.text:
       case_status = FINGER_PRINT_TAKEN
+    elif 'Card Is Being Produced' in status.text:
+      case_status = CARD_PRODUCED
+    elif 'Card Was Mailed' in status.text:
+      case_status = CARD_MAILED
     return case_status
 
 #*************************************************************************
@@ -161,6 +173,8 @@ def count_entries_from_db(db):
     numRFE = 0
     numTransfer = 0
     numNameUpdated = 0
+    numCardProduced = 0
+    numCardMailed = 0
     FingerPrintTaken = 0
     
     for case in db:
@@ -183,9 +197,13 @@ def count_entries_from_db(db):
         numNameUpdated += 1
       elif db[case]==FINGER_PRINT_TAKEN:
         FingerPrintTaken += 1
-    return numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken
+      elif db[case]==CARD_MAILED:
+        numCardMailed += 1
+      elif db[case]==CARD_PRODUCED:
+        numCardProduced += 1
+    return numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken, numCardMailed, numCardProduced
 
-def print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken):
+def print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken, numCardMailed, numCardProduced):
     print('For ' + str(2*numRange) + ' neighbors of ' + caseID +', we found the following statistics: ')
     print(template.format('total number of %s  application received: ' % formType, str(numTotalCase)))
     print(template.format('Case Was Approved: ', str(numApproved)))
@@ -197,6 +215,8 @@ def print_database_entries(template, caseID, formType, numTotalCase, numApproved
     print(template.format('Case is RFE: ', str(numRFE)))
     print(template.format('Case Was Transferred: ', str(numTransfer)))
     print(template.format('Name Was Updated: ', str(numNameUpdated)))
+    print(template.format('Card was produced: ', str(numCardProduced)))
+    print(template.format('Card was mailed: ', str(numCardMailed)))
 
 def do_check_my_case_my_neighbors(caseID, numRange):
     #initial hardcoded data
@@ -206,11 +226,11 @@ def do_check_my_case_my_neighbors(caseID, numRange):
     formType, case_status, db = query_uscis_and_find_type_of_form(caseID, print_status)
     query_uscis_based_on_form_type(db, caseID, formType, numRange)
     write_to_file(db, DATA)
-    numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken = count_entries_from_db(db)
+    numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken, numCardMailed, numCardProduced = count_entries_from_db(db)
     template = '{0:1}{1:5}'
-    print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken)
+    print_database_entries(template, caseID, formType, numTotalCase, numApproved, numRejected, numFPReceived, numReceived, numInterview, numRFE, numTransfer, numNameUpdated, FingerPrintTaken, numCardMailed, numCardProduced)
 
-def dump_each_form_to_db(db, numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1):
+def dump_each_form_to_db(db, numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1, numCardMailed1, numCardProduced1):
     db["Total Case"]             = numTotalCase1
     db["Case Received"]          = numReceived1
     db["Case Approved"]          = numApproved1
@@ -221,22 +241,24 @@ def dump_each_form_to_db(db, numTotalCase1, numApproved1, numRejected1, numFPRec
     db["RFE"]                    = numRFE1
     db["Case Transferred"]       = numTransfer1
     db["Name Was Updated"]       = numNameUpdated1
+    db["Card Produced"]          = numCardProduced1
+    db["Card Mailed"]            = numCardMailed1
     return db
     
 def count_each_db_and_draw_plot():
     db, db1, db2, db3, db4 = {}, {}, {}, {}, {}
     if database_485:
-        numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1 = count_entries_from_db(database_485)
-        db[FORM_485] = dump_each_form_to_db(db1, numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1)
+        numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1, numCardMailed1, numCardProduced1 = count_entries_from_db(database_485)
+        db[FORM_485] = dump_each_form_to_db(db1, numTotalCase1, numApproved1, numRejected1, numFPReceived1, numReceived1, numInterview1, numRFE1, numTransfer1, numNameUpdated1, FingerPrintTaken1, numCardMailed1, numCardProduced1 )
     if database_131:
-        numTotalCase2, numApproved2, numRejected2, numFPReceived2, numReceived2, numInterview2, numRFE2, numTransfer2, numNameUpdated2, FingerPrintTaken2 = count_entries_from_db(database_131)
-        db[FORM_131] = dump_each_form_to_db(db2, numTotalCase2, numApproved2, numRejected2, numFPReceived2, numReceived2, numInterview2, numRFE2, numTransfer2, numNameUpdated2, FingerPrintTaken2)
+        numTotalCase2, numApproved2, numRejected2, numFPReceived2, numReceived2, numInterview2, numRFE2, numTransfer2, numNameUpdated2, FingerPrintTaken2, numCardMailed2, numCardProduced2 = count_entries_from_db(database_131)
+        db[FORM_131] = dump_each_form_to_db(db2, numTotalCase2, numApproved2, numRejected2, numFPReceived2, numReceived2, numInterview2, numRFE2, numTransfer2, numNameUpdated2, FingerPrintTaken2, numCardMailed2, numCardProduced2 )
     if database_765:
-        numTotalCase3, numApproved3, numRejected3, numFPReceived3, numReceived3, numInterview3, numRFE3, numTransfer3, numNameUpdated3, FingerPrintTaken3 = count_entries_from_db(database_765)
-        db[FORM_765] = dump_each_form_to_db(db3, numTotalCase3, numApproved3, numRejected3, numFPReceived3, numReceived3, numInterview3, numRFE3, numTransfer3, numNameUpdated3, FingerPrintTaken3)
+        numTotalCase3, numApproved3, numRejected3, numFPReceived3, numReceived3, numInterview3, numRFE3, numTransfer3, numNameUpdated3, FingerPrintTaken3, numCardMailed3, numCardProduced3 = count_entries_from_db(database_765)
+        db[FORM_765] = dump_each_form_to_db(db3, numTotalCase3, numApproved3, numRejected3, numFPReceived3, numReceived3, numInterview3, numRFE3, numTransfer3, numNameUpdated3, FingerPrintTaken3, numCardMailed3, numCardProduced3 )
     if database_140:
-        numTotalCase4, numApproved4, numRejected4, numFPReceived4, numReceived4, numInterview4, numRFE4, numTransfer4, numNameUpdated4, FingerPrintTaken4 = count_entries_from_db(database_140)
-        db[FORM_140] = dump_each_form_to_db(db4, numTotalCase4, numApproved4, numRejected4, numFPReceived4, numReceived4, numInterview4, numRFE4, numTransfer4, numNameUpdated4, FingerPrintTaken4)
+        numTotalCase4, numApproved4, numRejected4, numFPReceived4, numReceived4, numInterview4, numRFE4, numTransfer4, numNameUpdated4, FingerPrintTaken4, numCardMailed4, numCardProduced4 = count_entries_from_db(database_140)
+        db[FORM_140] = dump_each_form_to_db(db4, numTotalCase4, numApproved4, numRejected4, numFPReceived4, numReceived4, numInterview4, numRFE4, numTransfer4, numNameUpdated4, FingerPrintTaken4, numCardMailed4, numCardProduced4 )
     return db
 
 def get_fonts():
@@ -294,8 +316,30 @@ def create_beautiful_html(db1, db2, range1, range2):
     #BODY_CONTENT = json2html.convert(json = db)
     json_html.write(START_HTML + HEAD_HTML + START_BODY + BODY_TITLE_HTML + json.dumps(db1) + END_BODY + END_HTML)
     json_html.close()
+
+def work_for_thread(myCenter, n, db, temp_db):
+        caseID = myCenter + str(n)
+        print_status = 0
+        formType, case_status, db = query_uscis_and_find_type_of_form(caseID, print_status)
+        db[caseID] = case_status
+        if find_if_form_type_we_are_interested_in(formType) == 1:
+            temp_db[formType] = db
+            
+def do_check_case_range_using_multi_threads(range1, range2):
+    db, temp_db = {}, {}
+    temp1_db = {}
+    range1_num = int(re.sub("[^0-9]", "", range1))
+    range2_num = int(re.sub("[^0-9]", "", range2))
+    myCenter = re.sub(r'[0-9]', "", range1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers = MAX_THREADS) as executor:
+        task_handled = {executor.submit(work_for_thread, myCenter, n, db, temp_db): n for n in range (range1_num, range2_num)}
+    write_to_file(temp_db, DATA)
+    temp1_db = count_each_db_and_draw_plot()
+    write_to_file(temp1_db, SUMMARY)
+    create_beautiful_html(temp_db, temp1_db, range1, range2)
+
     
-def do_check_case_range(range1, range2):
+def do_check_case_range_using_single_thread(range1, range2):
     db, temp_db = {}, {}
     temp1_db = {}
     range1_num = int(re.sub("[^0-9]", "", range1))
@@ -313,7 +357,6 @@ def do_check_case_range(range1, range2):
     temp1_db = count_each_db_and_draw_plot()
     write_to_file(temp1_db, SUMMARY)
     create_beautiful_html(temp_db, temp1_db, range1, range2)
-
 
 def get_args(argv):
     case = ""
@@ -363,4 +406,4 @@ if __name__ == "__main__":
     if (numRange !=0) and (caseID != ""):
         do_check_my_case_my_neighbors(caseID, numRange)
     else:
-        do_check_case_range(range1, range2)
+        do_check_case_range_using_multi_threads(range1, range2)
