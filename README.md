@@ -1,6 +1,8 @@
 # USCIS case status and neighbor watch
 ## Purpose
   * To find given case status and also check nearest neighbors case status of same type of application
+## External Packages needed
+  * pip3 install BeautifulSoup4 json2html APScheduler
 ## Motivation
   * My friend and my receipt number was 50 numbers apart like LIN2090012345 (my friend) and mine LIN2090012395
     * He got his EAD 3 weeks before I got, so I was using this script to pull the status of my neighbor through this script
@@ -45,3 +47,8 @@ Name Was Updated:                            0
 ```
 Checks the entire range and publish html file containing data in table format.
 ```
+
+### How to deploy on Heroku
+ * If you are looking to deploy this on heroku (AWS like service) then you need crontab or scheduler to fire python script which crawl every fixed hours
+ * Once crawl is completed, html will be generated and that html should be placed in to template folder.
+ * To generate Scheduler, follow: https://saqibameen.com/deploy-python-cron-job-scripts-on-heroku/ 
