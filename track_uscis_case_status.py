@@ -276,7 +276,7 @@ def get_table_design():
               padding: 5px;\
             }"
 
-def create_beautiful_html(db1, db2, range1, range2):
+def create_beautiful_html(db1, db2, range1, range2, good_count, bad_count, total_count):
     HTML_FILE_NAME = 'summary.html'
     CSS_FILE_NAME  = 'summary.css'
     START_HTML     = "\n<html>\n"
@@ -296,8 +296,8 @@ def create_beautiful_html(db1, db2, range1, range2):
                         \t</head>                                                                                          \n\
                     " % (get_fonts(), get_table_design())
     BODY_TITLE_HTML = "\
-                        \t\t<div><h1> USCIS Data: %s  Range: (%s : %s) (Tweeter: @krunal_7131)</h1></div>              \n\
-                    " % (get_date(), range1, range2)
+                        \t\t<div><h1> USCIS Data: %s  Range: (%s : %s) Good:Bad:Total (%d: %d: %d)(Tweeter: @krunal_7131)</h1></div>              \n\
+                    " % (get_date(), range1, range2, good_count, bad_count, total_count)
     
     attibute = " \"class=\"table table-bordered table-hover\"\" align=\"left\""
     BODY_CONTENT_GAP = "\n\n"
@@ -328,15 +328,30 @@ def work_for_thread(myCenter, n, db, temp_db):
 def do_check_case_range_using_multi_threads(range1, range2):
     db, temp_db = {}, {}
     temp1_db = {}
+    good_count, bad_count, total_count = 0, 0, 0
     range1_num = int(re.sub("[^0-9]", "", range1))
     range2_num = int(re.sub("[^0-9]", "", range2))
     myCenter = re.sub(r'[0-9]', "", range1)
-    with concurrent.futures.ThreadPoolExecutor(max_workers = MAX_THREADS) as executor:
-        task_handled = {executor.submit(work_for_thread, myCenter, n, db, temp_db): n for n in range (range1_num, range2_num)}
+    while ((range1_num + 10000) <= (range2_num)):
+        print('start while loop')
+        with concurrent.futures.ThreadPoolExecutor(max_workers = MAX_THREADS) as executor:
+            task_handled = {executor.submit(work_for_thread, myCenter, n, db, temp_db): n for n in range (range1_num, range1_num + 10000)}
+        for task in concurrent.futures.as_completed(task_handled):
+            task_id = task_handled[task]
+            try:
+                data = task.result()
+                total_count = total_count + 1
+            except Exception as exc:
+                bad_count = bad_count + 1
+            else:
+                good_count = good_count + 1
+        time.sleep(10)
+        range1_num = range1_num + 10000
     write_to_file(temp_db, DATA)
     temp1_db = count_each_db_and_draw_plot()
     write_to_file(temp1_db, SUMMARY)
-    create_beautiful_html(temp_db, temp1_db, range1, range2)
+    print('good_count:%d bad_count:%d total_count:%d' % (good_count, bad_count, total_count))
+    create_beautiful_html(temp_db, temp1_db, range1, range2, good_count, bad_count, total_count)
 
     
 def do_check_case_range_using_single_thread(range1, range2):
@@ -356,7 +371,7 @@ def do_check_case_range_using_single_thread(range1, range2):
     write_to_file(temp_db, DATA)
     temp1_db = count_each_db_and_draw_plot()
     write_to_file(temp1_db, SUMMARY)
-    create_beautiful_html(temp_db, temp1_db, range1, range2)
+    create_beautiful_html(temp_db, temp1_db, range1, range2, 0, 0, 0)
 
 def get_args(argv):
     case = ""
@@ -406,4 +421,5 @@ if __name__ == "__main__":
     if (numRange !=0) and (caseID != ""):
         do_check_my_case_my_neighbors(caseID, numRange)
     else:
+        print("Checking Range in multithread")
         do_check_case_range_using_multi_threads(range1, range2)
