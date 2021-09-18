@@ -32,8 +32,11 @@ database_131 = {}
 FORM_140 = "Form I-140"
 database_140 = {}
 database = {}
-DATA = "data.json"
-SUMMARY = "summary.json"
+current_time = time.strftime("%Y%m%d-%H%M%S")
+DATA = "data_%s.json" % (current_time)
+SUMMARY = "summary_%s.json" % (current_time)
+SUMMARY_HTML = "summary_%s.html" % (current_time)
+SUMMARY_CSS = "summary_%s.css" % (current_time)
 # for thread pool
 threads = []
 # be very careful increasin threads, as these many parallel USCIS requests are generated
@@ -97,8 +100,10 @@ def find_case_status(status):
       case_status = CASE_RECEIVED
     elif 'Case Is Ready To Be Scheduled For An Interview' in status.text:
       case_status = INTERVIEW_READY
-    elif any (RFE in status.text for RFE in ['Request for Additional Evidence Was Mailed', 'Request For Evidence Was Received']):
+    elif any (RFE in status.text for RFE in ['Request for Additional Evidence Was Mailed', 'Request For Evidence Was Received', 'Request for Additional Evidence Was Sent']):
       case_status = CASE_RFE
+    elif any (RFE in status.text for RFE in ['Card Was', 'Card Is Being Produced']):
+      case_status = CARD_MAILED
     elif 'Case Was Transferred' in status.text:
       case_status = CASE_TRANSFERRED
     elif 'Name Was Updated' in status.text:
@@ -277,8 +282,8 @@ def get_table_design():
             }"
 
 def create_beautiful_html(db1, db2, range1, range2, good_count, bad_count, total_count):
-    HTML_FILE_NAME = 'summary.html'
-    CSS_FILE_NAME  = 'summary.css'
+    HTML_FILE_NAME = SUMMARY_HTML
+    CSS_FILE_NAME  = SUMMARY_CSS
     START_HTML     = "\n<html>\n"
     END_HTML       = "\n</html>\n"
     START_BODY     = "\n\t<body>\n"
@@ -309,7 +314,7 @@ def create_beautiful_html(db1, db2, range1, range2, good_count, bad_count, total
         CONTENT += "\t" + json2html.convert(json = v, table_attributes = attibute)
         CONTENT += "\n</div>"
     CONTENT += "\n</div>"
-    summary_html = open("summary.html", "w")  # append mode
+    summary_html = open(SUMMARY_HTML, "w")  # append mode
     summary_html.write(START_HTML + HEAD_HTML + START_BODY + BODY_TITLE_HTML + BODY_CONTENT_GAP + CONTENT + END_BODY + END_HTML)
     summary_html.close()
     json_html = open("data.html", "w")  # append mode
